@@ -591,6 +591,8 @@ static int feed_input_buffer2(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs,
         if (ffpipeline_is_surface_need_reconfigure_l(pipeline)) {
             jobject new_surface = NULL;
 
+            ffp->forceRequestKeyFrame = 1;
+
             // request reconfigure before lock, or never get mutex
             ffpipeline_lock_surface(pipeline);
             ffpipeline_set_surface_need_reconfigure_l(pipeline, false);
@@ -960,6 +962,10 @@ static int feed_input_buffer(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs, 
         }
 #endif
 
+        if(ffp->forceRequestKeyFrame && d->pkt_temp.flags != AV_PKT_FLAG_KEY){
+            return 0;
+        }
+
         queue_flags = 0;
         input_buffer_index = SDL_AMediaCodec_dequeueInputBuffer(opaque->acodec, timeUs);
         if (input_buffer_index < 0) {
@@ -975,6 +981,7 @@ static int feed_input_buffer(JNIEnv *env, IJKFF_Pipenode *node, int64_t timeUs, 
         } else {
             SDL_AMediaCodecFake_flushFakeFrames(opaque->acodec);
 
+            ffp->forceRequestKeyFrame  = 0;
             copy_size = SDL_AMediaCodec_writeInputData(opaque->acodec, input_buffer_index, d->pkt_temp.data, d->pkt_temp.size);
             if (!copy_size) {
                 ALOGE("%s: SDL_AMediaCodec_getInputBuffer failed\n", __func__);
@@ -1144,7 +1151,7 @@ static int drain_output_buffer_l(JNIEnv *env, IJKFF_Pipenode *node, int64_t time
                opaque->frame_width  = width;
                opaque->frame_height = height;
             }
-            
+
             ALOGI(
                 "AMEDIACODEC__INFO_OUTPUT_FORMAT_CHANGED\n"
                 "    width-height: (%d x %d)\n"
